@@ -1,6 +1,31 @@
-def calculate_macd_signals(df, initial_capital=100):
-    #remove first 1 row
-    df = df.iloc[1:]
+#import the necessary libraries
+import warnings
+warnings.filterwarnings('ignore')
+import plotly.graph_objects as go
+
+
+def capital_calculation(df,col):
+    # Calculate the capital
+    current_capital = 100
+    buy_price = None
+    df['Capital'] = current_capital
+
+    for index, row in df.iterrows():
+        if row[col] == 'Buy':
+            buy_price = row['Close']
+        elif row[col] == 'Sell':
+            if buy_price is not None:
+                trade_return = (row['Close'] - buy_price) / buy_price
+                current_capital += current_capital * trade_return
+                buy_price = None
+        df.at[index, 'Capital'] = current_capital
+    
+    return df.Capital
+
+def calculate_macd_signals(df):
+    # Remove first row
+    df = df.iloc[1:].copy()
+    
     # Calculate EMAs
     df['EMA_12'] = df['Close'].ewm(span=12, adjust=False).mean()
     df['EMA_26'] = df['Close'].ewm(span=26, adjust=False).mean()
@@ -9,123 +34,43 @@ def calculate_macd_signals(df, initial_capital=100):
     df['MACD'] = df['EMA_12'] - df['EMA_26']
     df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     
-    # Generate Buy, Sell, Hold signals
-    df['Buy'] = np.where(df['MACD'] > df['Signal'], 1, 0)
-    df['Sell'] = np.where(df['MACD'] < df['Signal'], 1, 0)
-    df['Hold'] = np.where(df['MACD'] == df['Signal'], 1, 0)
+    # Initialize trade signals
+    df['MACD_Trades'] = 'Hold'
     
-    # Initialize trade flags and counter
-    buy_flag = False
-    hold_flag = False
-    sell_flag = True
-    days_count = 0
+    position = 0  # 1 for holding a stock, 0 for no position
+    buy_date = None  # Track the date of the buy signal
     
-    df['Trades'] = 'Hold'
+    for i, row in df.iterrows():
+        if row['MACD'] > row['Signal'] and position == 0:
+            df.at[i, 'MACD_Trades'] = 'Buy'
+            position = 1
+            buy_date = i  # Record the index (date) of the buy signal
+        elif row['MACD'] < row['Signal'] and position == 1:
+            df.at[i, 'MACD_Trades'] = 'Sell'
+            position = 0
+            buy_date = None  # Reset the buy date
+        elif position == 1 and buy_date is not None and (i - buy_date).days >= 11:
+            # If holding for 11 days, force a sell
+            df.at[i, 'MACD_Trades'] = 'Sell'
+            position = 0
+            buy_date = None  # Reset the buy date
     
-    # Initialize capital variables
-    current_capital = initial_capital
-    buy_price = None
-    
-    df['Capital'] = current_capital
-    
-    # Calculate trades and returns in the same loop
-    for index, row in df.iterrows():
-        if row['Buy'] == 1:
-            if sell_flag:
-                buy_flag = True
-                hold_flag = False
-                sell_flag = False
-                days_count = 0
-                df.at[index, 'Trades'] = 'Buy'
-                buy_price = row['Close']
-        elif buy_flag:
-            if row['Sell'] == 1 or days_count == 11:
-                buy_flag = False
-                hold_flag = False
-                sell_flag = True
-                df.at[index, 'Trades'] = 'Sell'
-                if buy_price is not None:
-                    trade_return = (row['Close'] - buy_price) / buy_price
-                    current_capital += current_capital * trade_return
-                    buy_price = None
-            else:
-                hold_flag = True
-                df.at[index, 'Trades'] = 'Hold'
-                days_count += 1
-        else:
-            df.at[index, 'Trades'] = 'Hold'
-        
-        # Update the capital in the DataFrame
-        df.at[index, 'Capital'] = current_capital
-    
-    # Print final results
-    final_capital = df.iloc[-1]['Capital']
-    overall_return = final_capital - initial_capital
-    
-    print(f"Final Capital: {final_capital}")
-    print(f"Overall Return: {overall_return}")
-    print(f"Overall Return %: {overall_return/initial_capital*100}")
-    #print number of days
-    print(f"Number of Days: {df.shape[0]}")
-    #print number of trades
-    print(f"Number of Trades: {df[df['Trades'] != 'Hold'].shape[0]}")
-    print("Ratio of Trades to Days: ", df[df['Trades'] != 'Hold'].shape[0]/df.shape[0])
-    print("----------------------------------------"+'\n')
-    
-    df.rename(columns={'Trades': 'Trades_MACD', 'Capital':'Capital_MACD'}, inplace=True)
-    return df[['Open', 'High', 'Low', 'Close', 'Volume','Trades_MACD', 'Capital_MACD']]
+    # Calculate number of days and trades
+    num_days = len(df)
+    num_trades = len(df[df['MACD_Trades'] != 'Hold'])
+    trades_ratio = num_trades / num_days
+    df['Capital_MACD'] = capital_calculation(df, 'MACD_Trades')
+    df.drop(['EMA_12', 'EMA_26', 'MACD', 'Signal', 'Capital'], axis=1, inplace=True)
 
+    print(f"Final Capital: {df.Capital_MACD.iloc[-1]}")
+    print(f"Overall Return: {df.Capital_MACD.iloc[-1] - 100}")
+    print(f"Overall Return %: {(df.Capital_MACD.iloc[-1] - 100)/100*100}")
+    print(f"Number of Days: {num_days}")
+    print(f"Number of Trades: {num_trades}")
+    print("Ratio of Trades to Days: ", trades_ratio)
 
-def capital_return(df,col,initial_capital=100):
-    # Initialize trade flags and counter
-    buy_flag = False
-    hold_flag = False
-    sell_flag = True
-    days_count = 0
-    
-    # Initialize capital variables
-    current_capital = initial_capital
-    buy_price = None
-    
-    df['Capital'] = current_capital
-    
-    # Calculate trades and returns in the same loop
-    for index, row in df.iterrows():
-        if row[col] == 'Sell':
-            if sell_flag:
-                buy_flag = True
-                hold_flag = False
-                sell_flag = False
-                days_count = 0
-                df.at[index, 'Trades'] = 'Buy'
-                buy_price = row['Close']
-        elif buy_flag:
-            if row['Sell'] == 1 or days_count == 11:
-                buy_flag = False
-                hold_flag = False
-                sell_flag = True
-                df.at[index, 'Trades'] = 'Sell'
-                if buy_price is not None:
-                    trade_return = (row['Close'] - buy_price) / buy_price
-                    current_capital += current_capital * trade_return
-                    buy_price = None
-            else:
-                hold_flag = True
-                df.at[index, 'Trades'] = 'Hold'
-                days_count += 1
-        else:
-            df.at[index, 'Trades'] = 'Hold'
-        
-        # Update the capital in the DataFrame
-        df.at[index, 'Capital'] = current_capital
-    
-    # Print final results
-    final_capital = df.iloc[-1]['Capital']
-    overall_return = final_capital - initial_capital
-    
+    return df
 
-
-# Function to find Sell and Buy points
 def profit_trades(df):
     df['Trades_Profit'] = 'Hold'
     df.sort_index(inplace=True, ascending=False)
@@ -146,34 +91,17 @@ def profit_trades(df):
 
     df.sort_index(inplace=True, ascending=True)
 
+    df['Capital_Profit'] = capital_calculation(df, 'Trades_Profit')
+    df.drop(['Capital'], axis=1, inplace=True)
 
-    # Calculate the capital
-    current_capital = 100
-    buy_price = None
-    df['Capital_Profit'] = current_capital
-
-    for index, row in df.iterrows():
-        if row['Trades_Profit'] == 'Buy':
-            buy_price = row['Close']
-        elif row['Trades_Profit'] == 'Sell':
-            if buy_price is not None:
-                trade_return = (row['Close'] - buy_price) / buy_price
-                current_capital += current_capital * trade_return
-                buy_price = None
-        df.at[index, 'Capital_Profit'] = current_capital
-
-    print(f"Final Capital: {current_capital}")
-    print(f"Overall Return: {current_capital - 100}")
-    print(f"Overall Return %: {(current_capital - 100)/100*100}")
+    print(f"Final Capital: {df.Capital_Profit.iloc[-1]}")
+    print(f"Overall Return: {df.Capital_Profit.iloc[-1] - 100}")
+    print(f"Overall Return %: {(df.Capital_Profit.iloc[-1] - 100)/100*100}")
     print(f"Number of Days: {df.shape[0]}")
     print(f"Number of Trades: {df[df['Trades_Profit'] != 'Hold'].shape[0]}")
     print("Ratio of Trades to Days: ", df[df['Trades_Profit'] != 'Hold'].shape[0]/df.shape[0])
-    print("----------------------------------------"+'\n')
-
-
     return df
 
-# Function to find Sell and Buy points
 def loss_trades(df):
     df['Trades_Loss'] = 'Hold'
     df.sort_index(inplace=True, ascending=False)
@@ -194,53 +122,23 @@ def loss_trades(df):
 
     df.sort_index(inplace=True, ascending=True)
 
+    df['Capital_Loss'] = capital_calculation(df, 'Trades_Loss')
+    df.drop(['Capital'], axis=1, inplace=True)
 
-    # Calculate the capital
-    current_capital = 100
-    buy_price = None
-    df['Capital_Loss'] = current_capital
-
-    for index, row in df.iterrows():
-        if row['Trades_Loss'] == 'Buy':
-            buy_price = row['Close']
-        elif row['Trades_Loss'] == 'Sell':
-            if buy_price is not None:
-                trade_return = (row['Close'] - buy_price) / buy_price
-                current_capital += current_capital * trade_return
-                buy_price = None
-        df.at[index, 'Capital_Loss'] = current_capital
-
-    print(f"Final Capital: {current_capital}")
-    print(f"Overall Return: {current_capital - 100}")
-    print(f"Overall Return %: {(current_capital - 100)/100*100}")
+    print(f"Final Capital: {df.Capital_Loss.iloc[-1]}")
+    print(f"Overall Return: {df.Capital_Loss.iloc[-1] - 100}")
+    print(f"Overall Return %: {(df.Capital_Loss.iloc[-1] - 100)/100*100}")
     print(f"Number of Days: {df.shape[0]}")
     print(f"Number of Trades: {df[df['Trades_Loss'] != 'Hold'].shape[0]}")
     print("Ratio of Trades to Days: ", df[df['Trades_Loss'] != 'Hold'].shape[0]/df.shape[0])
-    print("----------------------------------------"+'\n')
-
     return df
 
-
 def plot_trades(df, trades_column):
-    """
-    Plot Buy and Sell signals over time using plotly.
-
-    Args:
-    - df (pd.DataFrame): DataFrame containing Date index and 'trades' column.
-    - trades_column (str): Name of the column containing 'Buy', 'Sell', or 'Hold' signals.
-
-    Returns:
-    - None (displays the plot interactively).
-    """
-    # Filter out 'Hold' trades
     df_filtered = df[df[trades_column].isin(['Buy', 'Sell'])]
-
     # Map trades to colors for visualization
     color_map = {'Buy': 'green', 'Sell': 'red'}
-
     # Create figure
     fig = go.Figure()
-
     # Add scatter trace for Buys and Sells
     for trade_type in ['Buy', 'Sell']:
         trade_data = df_filtered[df_filtered[trades_column] == trade_type]
@@ -251,7 +149,6 @@ def plot_trades(df, trades_column):
             marker=dict(color=color_map[trade_type], size=10, symbol='triangle-up' if trade_type == 'Buy' else 'triangle-down'),
             name=trade_type
         ))
-
     # Update layout
     fig.update_layout(
         title='Buy and Sell Signals Over Time',
@@ -264,6 +161,5 @@ def plot_trades(df, trades_column):
         ),
         showlegend=True
     )
-
     # Show plot
     fig.show()
