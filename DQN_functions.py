@@ -34,6 +34,24 @@ class DQN(nn.Module):
         x = self.fc3(x)
         return x
 
+class ConvDQN(nn.Module):
+    def __init__(self, input_dim, output_dim, window_size):
+        super(ConvDQN, self).__init__()
+        self.conv1 = nn.Conv1d(in_channels=input_dim, out_channels=32, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv1d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.fc1 = nn.Linear(64 * window_size, 128)
+        self.fc2 = nn.Linear(128, output_dim)
+
+    def forward(self, x):
+        x = x.permute(0, 2, 1)  # Change the shape to (batch_size, num_features, window_size)
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = x.view(x.size(0), -1)  # Flatten the output from the conv layers
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+
 class ReplayMemory:
     def __init__(self, capacity):
         self.memory = deque(maxlen=capacity)
@@ -46,7 +64,6 @@ class ReplayMemory:
 
     def __len__(self):
         return len(self.memory)
-
 
 class DQNAgent:
     def __init__(self, state_size, action_size, lr=0.0001, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
@@ -262,7 +279,6 @@ def train_agent(agent, states, episodes, batch_size):
     # Plot loss per episode at the end of training
     agent.plot_loss_per_episode(loss_per_episode)
     return log_train
-
     
 def evaluate_agent(agent, states):
     state = states[0]

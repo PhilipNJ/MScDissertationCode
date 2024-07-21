@@ -19,6 +19,8 @@ def capital_calculation(df,col):
                 current_capital += current_capital * trade_return
                 buy_price = None
         df.at[index, 'Capital'] = current_capital
+
+        print(F"Total Pofit: {current_capital - 100}")
     
     return df.Capital
 
