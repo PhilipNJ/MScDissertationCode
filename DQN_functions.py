@@ -23,9 +23,9 @@ def create_states(df, window_size=9):
 class DQN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, output_dim)
+        self.fc1 = nn.Linear(input_dim, 64)
+        self.fc2 = nn.Linear(64, 32)
+        self.fc3 = nn.Linear(32, output_dim)
 
     def forward(self, x):
         x = x.view(x.size(0), -1)  # Flatten the input
@@ -33,7 +33,6 @@ class DQN(nn.Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
-
 
 class ReplayMemory:
     def __init__(self, capacity):
@@ -48,20 +47,21 @@ class ReplayMemory:
     def __len__(self):
         return len(self.memory)
 
+
 class DQNAgent:
     def __init__(self, state_size, action_size, lr=0.0001, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
         self.state_size = state_size
         self.action_size = action_size
         self.memory = ReplayMemory(10000)
-        self.gamma = gamma    # discount rate
-        self.epsilon = epsilon   # exploration rate
+        self.gamma = gamma
+        self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         self.model = DQN(state_size, action_size)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
         self.criterion = nn.MSELoss()
-        self.last_buy_index = -float('inf')  # Track the last buy index
-    
+        self.loss_history = []  # To store loss values
+
     def remember(self, state, action, reward, next_state, done):
         self.memory.push(state, action, reward, next_state, done)
     
@@ -71,11 +71,12 @@ class DQNAgent:
         state = torch.FloatTensor(state).unsqueeze(0)
         act_values = self.model(state)
         return torch.argmax(act_values[0]).item()
-    
+
     def replay(self, batch_size):
         if len(self.memory) < batch_size:
             return
         minibatch = self.memory.sample(batch_size)
+        total_loss = 0  # Track total loss for the batch
         for state, action, reward, next_state, done in minibatch:
             state = torch.FloatTensor(state).unsqueeze(0)
             next_state = torch.FloatTensor(next_state).unsqueeze(0)
@@ -86,10 +87,25 @@ class DQNAgent:
             target_f[0][action] = target
             self.optimizer.zero_grad()
             loss = self.criterion(target_f, self.model(state))
+            total_loss += loss.item()  # Aggregate loss
             loss.backward()
             self.optimizer.step()
+        self.loss_history.append(total_loss / batch_size)  # Store average loss for the batch
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
+
+    def plot_loss_per_episode(self, loss_per_episode):
+        plt.plot(loss_per_episode)
+        plt.xlabel('Episodes')
+        plt.ylabel('Loss')
+        plt.title('Loss Per Episode')
+        plt.show()
+
+def log_model_parameters(agent, episode):
+    print(f"Model parameters at episode {episode}:")
+    for name, param in agent.model.named_parameters():
+        if param.requires_grad:
+            print(f"{name}: {param.data}")
 
 
 # Define the objective function
@@ -168,9 +184,7 @@ def objective(trial, states):
 
     return np.mean(total_rewards)
 
-def train_agent(agent, states,episodes, batch_size):
-    episodes = episodes
-    batch_size = batch_size
+def train_agent(agent, states, episodes, batch_size):
     Episode = []
     Time = []
     Reward = []
@@ -178,9 +192,7 @@ def train_agent(agent, states,episodes, batch_size):
     Action = []
     next_price = []
     prev_price = []
-    last_action = 'Hold'
-    days_since_last_buy = 0
-    has_open_position = False
+    loss_per_episode = []
 
     for e in tqdm(range(episodes), desc='Training Progress'):
         state = states[0]
@@ -189,7 +201,7 @@ def train_agent(agent, states,episodes, batch_size):
         days_since_last_buy = 0
         has_open_position = False  # Track if there's an open position
         
-        for time in tqdm((range(1, len(states))), desc='Episode Progress'):
+        for time in range(1, len(states)):
             action = agent.act(state)
 
             # Ensure sell only after buy and max 11 days between buy and sell
@@ -240,9 +252,15 @@ def train_agent(agent, states,episodes, batch_size):
             if len(agent.memory) > batch_size:
                 agent.replay(batch_size)
 
+        # Calculate the loss for the current episode and append it
+        loss_per_episode.append(agent.loss_history[-1])
+
     log_train = pd.DataFrame({'Episode': Episode, 'Time': Time, 'Reward': Reward, 'Total_Reward': Total_Reward, 'Action': Action, 'Next_Price': next_price, 'Prev_Price': prev_price})
     log_train['Action'] = log_train['Action'].map({0: 'Sell', 1: 'Buy', 2: 'Hold'})
     log_train['Action'].value_counts()
+
+    # Plot loss per episode at the end of training
+    agent.plot_loss_per_episode(loss_per_episode)
     return log_train
 
     
