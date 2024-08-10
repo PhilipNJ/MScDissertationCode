@@ -110,151 +110,197 @@ class DQNAgent:
         plt.title('Loss Per Episode')
         plt.show()
 
-def log_model_parameters(agent, episode):
-    print(f"Model parameters at episode {episode}:")
-    for name, param in agent.model.named_parameters():
-        if param.requires_grad:
-            print(f"{name}: {param.data}")
 
-# def train_agent(agent, states, episodes, batch_size):
-#     Episode = []
-#     Time = []
-#     Reward = []
-#     Action = []
-#     prev_price = []
-#     loss_per_episode = []
-
-#     for e in range(episodes):
-#         state = states[0]
-#         reward = 0
-#         has_open_position = False
-#         days_since_last_buy = 0
-
-#         for time in range(1, len(states)):
-#             action = agent.act(state)
-
-#             if has_open_position:
-#                 days_since_last_buy += 1
-
-#             if action == 0:
-#                 if not has_open_position:
-#                     action = 2
-#                 else:
-#                     has_open_position = False
-#                     days_since_last_buy = 0
-#                     reward += state[-1][3]
-
-#             if action == 1:
-#                 if has_open_position:
-#                     action = 2
-#                 else:
-#                     has_open_position = True
-#                     days_since_last_buy = 0
-#                     reward -= state[-1][3]
-
-#             if has_open_position and days_since_last_buy > 11:
-#                 action = 0
-#                 has_open_position = False
-#                 days_since_last_buy = 0
-#                 reward += state[-1][3]
-
-#             next_state = states[time]
-#             prev_price.append(state[-1][3])
-#             done = time == len(states) - 1
-#             agent.remember(state, action, reward, next_state, done)
-#             state = next_state
-#             Episode.append(e + 1)
-#             Time.append(time)
-#             Reward.append(reward)
-#             Action.append(action)
-#             if done:
-#                 if (e + 1) % 1 == 0:
-#                     print(f"Episode {e + 1}/{episodes}, Total Reward: {reward}, Loss: {np.log(agent.loss_history[-1])}")
-#                 break
-#             if len(agent.memory) > batch_size:
-#                 agent.replay(batch_size)
-
-#         loss_per_episode.append(agent.loss_history[-1])
-
-#     log_train = pd.DataFrame({'Episode': Episode, 'Time': Time, 'Reward': Reward, 'Action': Action, 'Price': prev_price})
-#     log_train['Action'] = log_train['Action'].map({0: 'Sell', 1: 'Buy', 2: 'Hold'})
-#     log_train['Action'].value_counts()
-#     log_train['Loss'] = log_train['Episode'].map({index: element for index, element in enumerate(loss_per_episode, start=1)})
-
-#     agent.plot_loss_per_episode(loss_per_episode)
-#     return log_train
-
-def evaluate_agent(agent, states):
+def train_agent(agent, states, episodes, batch_size):
     Episode = []
     Time = []
     Reward = []
-    Total_Reward = []
     Action = []
-    next_price = []
+    prev_price = []
+    loss_per_episode = []
+
+    for e in range(episodes):
+        state = states[0]
+        reward = 0
+        has_open_position = False
+        price_at_buy = 0
+        days_since_last_buy = 0
+
+        for time in range(1, len(states)):
+            action = agent.act(state)
+
+            if has_open_position:
+                days_since_last_buy += 1
+
+            if action == 1: #buy
+                if has_open_position:
+                    action = 2
+                else:
+                    has_open_position = True
+                    days_since_last_buy = 0
+                    price_at_buy = state[-1][3]
+
+            if action == 0: #sell
+                if not has_open_position:
+                    action = 2
+                else:
+                    has_open_position = False
+                    days_since_last_buy = 0
+                    profit = state[-1][3] - price_at_buy
+                    reward =+ profit
+
+            if has_open_position and days_since_last_buy > 11:
+                action = 0
+                has_open_position = False
+                days_since_last_buy = 0
+                reward = state[-1][3] - price_at_buy
+                reward =+ profit
+            
+            if action == 2 and not has_open_position:
+                reward = reward * (1-0.1)
+
+            next_state = states[time]
+            prev_price.append(state[-1][3])
+            done = time == len(states) - 1
+            agent.remember(state, action, reward, next_state, done)
+            state = next_state
+            Episode.append(e + 1)
+            Time.append(time)
+            Reward.append(reward)
+            Action.append(action)
+            if done:
+                if (e + 1) % 1 == 0:
+                    print(f"Episode {e + 1}/{episodes}, Total Reward: {reward}, Loss: {np.log(agent.loss_history[-1])}")
+                break
+            if len(agent.memory) > batch_size:
+                agent.replay(batch_size)
+
+        loss_per_episode.append(agent.loss_history[-1])
+
+    log_train = pd.DataFrame({'Episode': Episode, 'Time': Time, 'Reward': Reward, 'Action': Action, 'Price': prev_price})
+    log_train['Action'] = log_train['Action'].map({0: 'Sell', 1: 'Buy', 2: 'Hold'})
+    log_train['Action'].value_counts()
+    log_train['Loss'] = log_train['Episode'].map({index: element for index, element in enumerate(loss_per_episode, start=1)})
+
+    agent.plot_loss_per_episode(loss_per_episode)
+    return log_train
+
+
+# def evaluate_agent(agent, states):
+#     Episode = []
+#     Time = []
+#     Reward = []
+#     Total_Reward = []
+#     Action = []
+#     next_price = []
+#     prev_price = []
+
+#     state = states[0]
+#     reward = 0
+#     last_action = 'Hold'
+#     days_since_last_buy = 0
+#     has_open_position = False  # Track if there's an open position
+
+#     for time in range(1, len(states)):
+#         action = agent.act(state)
+
+#         # Ensure sell only after buy and max 11 days between buy and sell
+#         if has_open_position:
+#             days_since_last_buy += 1
+
+#         if action == 0:  # Sell
+#             if not has_open_position:  # Can't sell if no open position
+#                 action = 2  # Change to Hold if not previously bought
+#             else:
+#                 has_open_position = False  # Sell the open position
+#                 days_since_last_buy = 0  # Reset days since last buy
+#                 reward += state[-1][3]  # Example: Reward based on price difference
+
+#         if action == 1:  # Buy
+#             if has_open_position:  # Can't buy if already have an open position
+#                 action = 2  # Change to Hold if already bought
+#             else:
+#                 has_open_position = True  # Buy, opening a new position
+#                 days_since_last_buy = 0  # Reset days since last buy
+#                 reward -= state[-1][3]  # Example: Reward based on price difference
+
+#         # Force a sell if more than 11 days since last buy
+#         if has_open_position and days_since_last_buy > 11:
+#             action = 0  # Force a sell
+#             has_open_position = False
+#             days_since_last_buy = 0
+#             reward += state[-1][3]  # Example: Reward based on price difference
+
+#         # Update last action and reset days since last buy if sell or buy happens
+#         if action == 1:  # Buy
+#             days_since_last_buy = 0
+#             has_open_position = True
+#         if action == 0:  # Sell
+#             has_open_position = False
+#         if action == 2:  # Hold
+#             reward = reward  # Example: Reward based on price difference
+
+#         next_state = states[time]
+#         prev_price.append(state[-1][3])
+#         done = time == len(states) - 1
+#         state = next_state
+#         Episode.append(1)
+#         Time.append(time)
+#         Reward.append(reward)
+#         Action.append(action)
+#         if done:
+#             break
+
+#     log_evaluate = pd.DataFrame({'Episode': Episode, 'Time': Time, 'Reward': Reward, 'Total_Reward': reward, 'Action': Action, 'Price': prev_price})
+#     log_evaluate['Action'] = log_evaluate['Action'].map({0: 'Sell', 1: 'Buy', 2: 'Hold'})
+#     log_evaluate['Action'].value_counts()
+
+#     return log_evaluate
+
+def evaluate_agent(agent, states):
+    Time = []
+    Action = []
     prev_price = []
 
-    state = states[0]
-    reward = 0
-    last_action = 'Hold'
+    has_open_position = False
+    price_at_buy = 0
     days_since_last_buy = 0
-    has_open_position = False  # Track if there's an open position
 
     for time in range(1, len(states)):
-        action = agent.act(state)
+        state = states[time - 1]
+        action = agent.act(state)  # Assuming agent has a 'training' flag to distinguish between train and evaluation mode
 
-        # Ensure sell only after buy and max 11 days between buy and sell
         if has_open_position:
             days_since_last_buy += 1
 
-        if action == 0:  # Sell
-            if not has_open_position:  # Can't sell if no open position
-                action = 2  # Change to Hold if not previously bought
-            else:
-                has_open_position = False  # Sell the open position
-                days_since_last_buy = 0  # Reset days since last buy
-                reward += state[-1][3]  # Example: Reward based on price difference
-
         if action == 1:  # Buy
-            if has_open_position:  # Can't buy if already have an open position
-                action = 2  # Change to Hold if already bought
+            if has_open_position:
+                action = 2  # Invalid action, change to Hold
             else:
-                has_open_position = True  # Buy, opening a new position
-                days_since_last_buy = 0  # Reset days since last buy
-                reward -= state[-1][3]  # Example: Reward based on price difference
+                has_open_position = True
+                days_since_last_buy = 0
+                price_at_buy = state[-1][3]
 
-        # Force a sell if more than 11 days since last buy
+        if action == 0:  # Sell
+            if not has_open_position:
+                action = 2  # Invalid action, change to Hold
+            else:
+                has_open_position = False
+                days_since_last_buy = 0
+
         if has_open_position and days_since_last_buy > 11:
-            action = 0  # Force a sell
+            action = 0  # Force sell after 11 days
             has_open_position = False
             days_since_last_buy = 0
-            reward += state[-1][3]  # Example: Reward based on price difference
 
-        # Update last action and reset days since last buy if sell or buy happens
-        if action == 1:  # Buy
-            days_since_last_buy = 0
-            has_open_position = True
-        if action == 0:  # Sell
-            has_open_position = False
-        if action == 2:  # Hold
-            reward = reward  # Example: Reward based on price difference
-
-        next_state = states[time]
         prev_price.append(state[-1][3])
-        done = time == len(states) - 1
-        state = next_state
-        Episode.append(1)
         Time.append(time)
-        Reward.append(reward)
         Action.append(action)
-        if done:
-            break
 
-    log_evaluate = pd.DataFrame({'Episode': Episode, 'Time': Time, 'Reward': Reward, 'Total_Reward': reward, 'Action': Action, 'Price': prev_price})
-    log_evaluate['Action'] = log_evaluate['Action'].map({0: 'Sell', 1: 'Buy', 2: 'Hold'})
-    log_evaluate['Action'].value_counts()
+    log_evaluation = pd.DataFrame({'Time': Time, 'Action': Action, 'Price': prev_price})
+    log_evaluation['Action'] = log_evaluation['Action'].map({0: 'Sell', 1: 'Buy', 2: 'Hold'})
 
-    return log_evaluate
-
+    return log_evaluation
 
 def create_action_episode_df(log_train):
 
@@ -302,7 +348,8 @@ def plot_training(log_train):
     plt.title('Reward and Loss vs Episode')
     plt.show()
 
-# def train_agent(agent, states, episodes, batch_size, price_history, reward_window=12):
+
+# def train_agent(agent, states, episodes, batch_size, price_history, reward_window=12, patience=10, min_delta=0.5,penalty=0.01):
 #     Episode = []
 #     Time = []
 #     Reward = []
@@ -310,11 +357,17 @@ def plot_training(log_train):
 #     prev_price = []
 #     loss_per_episode = []
 
+#     close_prices = price_history['Close'].values
+
+#     best_loss = float('inf')
+#     patience_counter = 0
+
 #     for e in range(episodes):
 #         state = states[0]
 #         reward = 0
 #         has_open_position = False
 #         days_since_last_buy = 0
+#         reward_per_episode = 0
 
 #         for time in range(1, len(states)):
 #             action = agent.act(state)
@@ -324,27 +377,37 @@ def plot_training(log_train):
 #                 if days_since_last_buy > 11:
 #                     action = 2  # Force Sell
 
-#             self_price = price_history['Close'].iat[time]
-#             self_prev_price = price_history['Close'].iat[time - 1]
-#             self_init_price = price_history['Close'].iat[time - reward_window]
+#             # Precomputed prices
+#             self_price = close_prices[time]
+#             self_prev_price = close_prices[time - 1]
+#             if has_open_position:
+#                 self_init_price = close_prices[time - days_since_last_buy]
+#             else:
+#                 self_init_price = close_prices[time - reward_window]
+            
 
 #             if action == 2:  # Sell
 #                 if has_open_position:
 #                     has_open_position = False
+                    # reward = (1 + action * (self_price - self_prev_price) / self_prev_price)
+                    # reward = (reward * self_prev_price / self_init_price)-1
 #                     days_since_last_buy = 0
-#                     reward = 1 + action * (self_price - self_prev_price) / self_prev_price
-#                     reward = reward * self_prev_price / self_init_price
 #                 else:
 #                     action = 1  # Hold
 
 #             if action == 0:  # Buy
 #                 if not has_open_position:
 #                     has_open_position = True
-#                     reward = 1 + action * (self_price - self_prev_price) / self_prev_price
-#                     reward = reward * self_prev_price / self_init_price
+#                     reward = (1 + action * (self_price - self_prev_price) / self_prev_price)
+#                     reward = (reward * self_prev_price / self_init_price)-1
 #                 else:
 #                     action = 1  # Hold
+            
+#             if action == 1:  # Hold
+#                 if not has_open_position:
+#                     reward = reward * penalty
 
+#             reward_per_episode += reward
 #             next_state = states[time]
 #             prev_price.append(self_prev_price)
 #             done = time == len(states) - 1
@@ -355,113 +418,37 @@ def plot_training(log_train):
 #             Reward.append(reward)
 #             Action.append(action)
 #             if done:
-#                 if (e + 1) % 1 == 0:
-#                     print(f"Episode {e + 1}/{episodes}, Total Reward: {reward}, Loss: {np.log(agent.loss_history[-1])}")
+#                 current_loss = np.log(agent.loss_history[-1])
+#                 print(f"Episode {e + 1}/{episodes}, Total Reward: {reward_per_episode}, Loss: {current_loss}")
+
+#                 # Early stopping check
+#                 if best_loss - current_loss > min_delta:
+#                     best_loss = current_loss
+#                     patience_counter = 0
+#                 else:
+#                     patience_counter += 1
+
+#                 if patience_counter > patience:
+#                     print("Early stopping triggered.")
+#                     break
+
 #                 break
 #             if len(agent.memory) > batch_size:
 #                 agent.replay(batch_size)
 
 #         loss_per_episode.append(agent.loss_history[-1])
+#         if patience_counter > patience:
+#             break
 
-#     log_train = pd.DataFrame({'Episode': Episode, 'Time': Time, 'Reward': Reward, 'Action': Action, 'Price': prev_price})
+#     log_train = pd.DataFrame({
+#         'Episode': Episode,
+#         'Time': Time,
+#         'Reward': Reward,
+#         'Action': Action,
+#         'Price': prev_price
+#     })
 #     log_train['Action'] = log_train['Action'].map({0: 'Buy', 1: 'Hold', 2: 'Sell'})
-#     log_train['Action'].value_counts()
 #     log_train['Loss'] = log_train['Episode'].map({index: element for index, element in enumerate(loss_per_episode, start=1)})
 
 #     agent.plot_loss_per_episode(loss_per_episode)
 #     return log_train
-
-def train_agent(agent, states, episodes, batch_size, price_history, reward_window=12, patience=10, min_delta=0.5):
-    Episode = []
-    Time = []
-    Reward = []
-    Action = []
-    prev_price = []
-    loss_per_episode = []
-
-    close_prices = price_history['Close'].values
-
-    best_loss = float('inf')
-    patience_counter = 0
-
-    for e in range(episodes):
-        state = states[0]
-        reward = 0
-        has_open_position = False
-        days_since_last_buy = 0
-        reward_per_episode = 0
-
-        for time in range(1, len(states)):
-            action = agent.act(state)
-
-            if has_open_position:
-                days_since_last_buy += 1
-                if days_since_last_buy > 11:
-                    action = 2  # Force Sell
-
-            # Precomputed prices
-            self_price = close_prices[time]
-            self_prev_price = close_prices[time - 1]
-            self_init_price = close_prices[time - reward_window]
-
-            if action == 2:  # Sell
-                if has_open_position:
-                    has_open_position = False
-                    days_since_last_buy = 0
-                else:
-                    action = 1  # Hold
-
-            if action == 0:  # Buy
-                if not has_open_position:
-                    has_open_position = True
-                else:
-                    action = 1  # Hold
-            
-            reward = 1 + action * (self_price - self_prev_price) / self_prev_price
-            reward = reward * self_prev_price / self_init_price
-            reward_per_episode += reward
-
-            next_state = states[time]
-            prev_price.append(self_prev_price)
-            done = time == len(states) - 1
-            agent.remember(state, action, reward, next_state, done)
-            state = next_state
-            Episode.append(e + 1)
-            Time.append(time)
-            Reward.append(reward)
-            Action.append(action)
-            if done:
-                current_loss = np.log(agent.loss_history[-1])
-                print(f"Episode {e + 1}/{episodes}, Total Reward: {reward_per_episode}, Loss: {current_loss}")
-
-                # Early stopping check
-                if best_loss - current_loss > min_delta:
-                    best_loss = current_loss
-                    patience_counter = 0
-                else:
-                    patience_counter += 1
-
-                if patience_counter > patience:
-                    print("Early stopping triggered.")
-                    break
-
-                break
-            if len(agent.memory) > batch_size:
-                agent.replay(batch_size)
-
-        loss_per_episode.append(agent.loss_history[-1])
-        if patience_counter > patience:
-            break
-
-    log_train = pd.DataFrame({
-        'Episode': Episode,
-        'Time': Time,
-        'Reward': Reward,
-        'Action': Action,
-        'Price': prev_price
-    })
-    log_train['Action'] = log_train['Action'].map({0: 'Buy', 1: 'Hold', 2: 'Sell'})
-    log_train['Loss'] = log_train['Episode'].map({index: element for index, element in enumerate(loss_per_episode, start=1)})
-
-    agent.plot_loss_per_episode(loss_per_episode)
-    return log_train
