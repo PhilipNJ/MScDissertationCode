@@ -1,12 +1,9 @@
 # Ignore all CSV files
 *.csv
 
-./FTSE100/log_train_CNN_600_ep_new.csv
-./FTSE100/log_train_CNN_600_ep_new_correct_cols.csv
-./NIFTY50/log_train_CNN_1000_ep_new.csv
-./NIFTY50/log_train_CNN_1000_ep_new_hyp.csv
-./SP500/log_train_CNN.csv
-./SP500/log_train_ANN.csv
-./SP500/log_train_CNN_adjusted learning rate.csv
-./SP500/log_train_CNN_adjusted_lr_hyp_tuned.csv
-./log_train_CNN_adjusted learning rate_1.csv
+
+# Ignore all files in the unused files directory
+unused_files/*
+
+
+
