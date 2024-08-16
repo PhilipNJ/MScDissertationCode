@@ -10,7 +10,9 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
 import optuna
-import matplotlib.pyplot as plt
+from scipy.signal import savgol_filter
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 def create_states(df, window_size=9):
     states = []
@@ -363,3 +365,104 @@ def train_agent_hold(agent, states, episodes, batch_size):
     agent.plot_loss_per_episode(loss_per_episode)
     return log_train
 
+def reward_filter(reward):
+    reward_df = pd.DataFrame(reward, columns=['Reward'])
+    reward_df['Episode'] = reward_df.index+1
+
+    plt.figure(figsize=(10,6))
+    plt.plot(reward_df['Episode'], reward_df['Reward'], label='Reward', color='blue')
+    plt.plot(reward_df['Episode'], savgol_filter(reward_df['Reward'], 51, 3), label='Reward 51', color='red')
+    plt.plot(reward_df['Episode'], savgol_filter(reward_df['Reward'], 101, 3), label='Reward 101', color='green')
+    plt.plot(reward_df['Episode'], savgol_filter(reward_df['Reward'], 201, 3), label='Reward 201', color='orange')
+    plt.xlabel('Episode')
+    plt.ylabel('Reward')
+    plt.title('Training Reward')
+    plt.legend()
+    plt.show()
+
+def generate_trade_summary(df,Action,Price):
+    # Initialize an empty list to store trade summaries
+    trades = []
+
+    # Initialize variables for tracking trades
+    buy_price = None
+    buy_date = None
+
+    # Iterate through the DataFrame to find buy and sell actions
+    for index, row in df.iterrows():
+        if row[Action] == 'Buy':
+            buy_price = row[Price]
+            buy_date = row['Date']
+        elif row[Action] == 'Sell' and buy_price is not None:
+            sell_price = row[Price]
+            sell_date = row['Date']
+            profit_loss = sell_price - buy_price
+            trades.append({
+                "Trade": len(trades) + 1,
+                "Buy Date": buy_date,
+                "Sell Date": sell_date,
+                "Buy Price": buy_price,
+                "Sell Price": sell_price,
+                "Profit/Loss": profit_loss
+            })
+            # Reset buy_price and buy_date for next trade
+            buy_price = None
+            buy_date = None
+
+    # Create a DataFrame from the trades list
+    trade_summary_df = pd.DataFrame(trades)
+    trade_summary_df['Profit/Loss_percent'] = trade_summary_df['Profit/Loss']/trade_summary_df['Buy Price']
+    trade_summary_df['Profit_Loss'] = trade_summary_df['Profit/Loss'].apply(lambda x: 'Profit' if x>0 else 'Loss')
+    trade_summary_df= trade_summary_df.sort_values(by='Profit/Loss', ascending=False)
+    return trade_summary_df
+
+
+def plot_test_trades(df):
+    # Create the subplot figure with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Add the Close price trace
+    fig.add_trace(
+        go.Scatter(x=df['Date'], y=df['Close'], mode='lines', name='Close Price', line=dict(color='blue')),
+        secondary_y=False,
+    )
+
+    # Add the Capital_MACD trace
+    fig.add_trace(
+        go.Scatter(x=df['Date'], y=df['Capital_MACD'], mode='lines', name='Capital MACD', line=dict(color='green')),
+        secondary_y=True,
+    )
+
+    # Add the Capital_DQN trace
+    fig.add_trace(
+        go.Scatter(x=df['Date'], y=df['Capital_DQN'], mode='lines', name='Capital DQN', line=dict(color='orange')),
+        secondary_y=True,
+    )
+
+    # Add Buy/Sell markers for MACD_Trades
+    for i in range(len(df)):
+        if df['MACD_Trades'][i] == 'Buy':
+            fig.add_trace(
+                go.Scatter(x=[df['Date'][i]], y=[df['Capital_MACD'][i]], mode='markers',
+                        marker=dict( size=3, color='black'),showlegend=False,hoverinfo='none'),
+                secondary_y=True,)
+
+    # Add Buy/Sell markers for DQN_Trades
+    for i in range(len(df)):
+        if df['DQN_Trades'][i] == 'Buy':
+            fig.add_trace(
+                go.Scatter(x=[df['Date'][i]], y=[df['Capital_DQN'][i]], mode='markers',
+                        marker=dict(size=3, color='black'),showlegend=False,hoverinfo='none'),
+                secondary_y=True,)
+
+    # Update layout for better readability and interactivity
+    fig.update_layout(
+        title='Close Price and Capital Over Time with Buy/Sell Markers',
+        xaxis_title='Date',
+        yaxis_title='Close Price',
+        yaxis2_title='Capital',
+        hovermode='x unified'
+    )
+
+    # Show the figure
+    fig.show()
