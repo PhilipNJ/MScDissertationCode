@@ -466,3 +466,87 @@ def plot_test_trades(df):
 
     # Show the figure
     fig.show()
+
+def test_trades_summary(df_test, evaluation_log):
+    test_trades_combined = df_test[['Close']]
+    test_trades_combined = test_trades_combined.join(calculate_macd_signals(df_test)[['MACD_Trades','Capital_MACD']])
+    test_trades_combined['MACD_Trades'] = test_trades_combined['MACD_Trades'].fillna('Hold')
+    test_trades_combined['Capital_MACD'] = test_trades_combined['Capital_MACD'].fillna(100)
+    test_trades_combined = test_trades_combined.reset_index()
+    test_trades_combined = test_trades_combined.rename(columns={'index':'Date'})
+    test_trades_combined = test_trades_combined.merge(evaluation_log[['Date','Action','Capital']], on='Date', how='left')
+    test_trades_combined = test_trades_combined.rename(columns={'Action':'DQN_Trades','Capital':'Capital_DQN'})
+    test_trades_combined['DQN_Trades'] = test_trades_combined['DQN_Trades'].fillna('Hold')
+    test_trades_combined['Capital_DQN'] = test_trades_combined['Capital_DQN'].fillna(100)
+    #print empty line
+    print()
+    print("--- Test Trades Summary ---")
+    print(f"Return without DQN: {round((test_trades_combined['Close'].iloc[-1] - test_trades_combined['Close'].iloc[0])/test_trades_combined['Close'].iloc[0], 3)}%")
+    print(f"Return with DQN: {round((test_trades_combined['Capital_DQN'].iloc[-1] - 100), 3)}%")
+    print(f"Return with MACD: {round((test_trades_combined['Capital_MACD'].iloc[-1] - 100), 3)}%")
+    print(f"Return with Combined Capital: {round(test_trades_combined['Capital_MACD'].iloc[-1] - 100 + test_trades_combined['Capital_DQN'].iloc[-1] - 100, 3)}%")
+    plot_test_trades(test_trades_combined)
+    return test_trades_combined
+
+def train_agent_long(agent, states, episodes, batch_size):
+    Episode = []
+    Time = []
+    Reward = []
+    Action = []
+    prev_price = []
+    loss_per_episode = []
+
+    for e in range(episodes):
+        state = states[0]
+        reward = 0
+        has_open_position = False
+        price_at_buy = 0
+
+        for time in range(1, len(states)):
+            action = agent.act(state)
+
+            if action == 1: #buy
+                if has_open_position:
+                    action = 2
+                else:
+                    has_open_position = True
+                    days_since_last_buy = 0
+                    price_at_buy = state[-1][3]
+
+            if action == 0: #sell
+                if not has_open_position:
+                    action = 2
+                else:
+                    has_open_position = False
+                    days_since_last_buy = 0
+                    profit = state[-1][3] - price_at_buy
+                    reward =+ profit
+            
+            if action == 2 and not has_open_position:
+                reward = reward * (1-0.1)
+
+            next_state = states[time]
+            prev_price.append(state[-1][3])
+            done = time == len(states) - 1
+            agent.remember(state, action, reward, next_state, done)
+            state = next_state
+            Episode.append(e + 1)
+            Time.append(time)
+            Reward.append(reward)
+            Action.append(action)
+            if done:
+                if (e + 1) % 1 == 0:
+                    print(f"Episode {e + 1}/{episodes}, Total Reward: {reward}, Loss: {np.log(agent.loss_history[-1])}")
+                break
+            if len(agent.memory) > batch_size:
+                agent.replay(batch_size)
+
+        loss_per_episode.append(agent.loss_history[-1])
+
+    log_train = pd.DataFrame({'Episode': Episode, 'Time': Time, 'Reward': Reward, 'Action': Action, 'Price': prev_price})
+    log_train['Action'] = log_train['Action'].map({0: 'Sell', 1: 'Buy', 2: 'Hold'})
+    log_train['Action'].value_counts()
+    log_train['Loss'] = log_train['Episode'].map({index: element for index, element in enumerate(loss_per_episode, start=1)})
+
+    agent.plot_loss_per_episode(loss_per_episode)
+    return log_train

@@ -11,6 +11,36 @@ alt.data_transformers.disable_max_rows()
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+def nifty_convert(df):
+    df.reset_index(drop=True, inplace=True)
+    df['Date'] = pd.to_datetime(df['Date'], format='%d/%m/%Y')
+    #rename price as Close, Vol. as Volume
+    df.rename(columns={'Price':'Close'}, inplace=True)
+    df = df[['Date','Open','High','Low','Close','Vol.']]
+    df = df.ffill()
+    df['Open'] = df['Open'].str.replace(',', '').astype(float)
+    df['High'] = df['High'].str.replace(',', '').astype(float)
+    df['Low'] = df['Low'].str.replace(',', '').astype(float)
+    df['Close'] = df['Close'].str.replace(',', '').astype(float)
+    
+    # Function to convert the values
+    def convert_volume(value):
+        if 'M' in value:
+            return float(value.replace('M', '').replace(',', '')) * 1_000_000
+        elif 'B' in value:
+            return float(value.replace('B', '').replace(',', '')) * 1_000_000_000
+        else:
+            return float(value)
+
+    # Apply the conversion function to the 'Vol.' column
+    df['Volume'] = df['Vol.'].apply(convert_volume)
+
+    # Drop the 'Vol.' column
+    df.drop('Vol.', axis=1, inplace=True)
+    df = df.sort_values('Date')
+    df = df.set_index('Date')
+    
+    return df
 
 def EDA(df):
     df.index = pd.to_datetime(df.index)
@@ -125,7 +155,6 @@ def EDA(df):
     
     return dashboard
 
-
 def decomposition_plot(df, difference=0):
     cols = ['Close', 'Open', 'High', 'Low', 'Volume']
     fig, axs = plt.subplots(len(cols) * 4, 1, figsize=(10, 8 * len(cols)))
@@ -158,7 +187,6 @@ def decomposition_plot(df, difference=0):
         axs[i*4 + 3].set_title(f'{col} - Residuals')
     
     plt.show()
-
 
 def stationarity_check(df,difference=0):
     cols = ['Close', 'Open', 'High', 'Low', 'Volume']
@@ -201,10 +229,6 @@ def normality_check(df,difference=0):
         print('Jarque-Bera Test ---- statistic: {}, p-value: {}'.format(jb_test[0], jb_test[1]))
         print('Normal Test ---- statistic: {}, p-value: {}'.format(norm_test[0], norm_test[1]))
 
-
-
-
-
 def daily_returns(df):
     df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
     daily_returns = df.pct_change().dropna()
@@ -242,4 +266,43 @@ def daily_returns(df):
         axes[i].set_ylabel('Daily Returns')
         axes[i].set_xlabel(column)
 
+    plt.show()
+
+def plot_fy_annual_returns(df, title):
+    def calculate_fy_returns(df):
+        df = df.copy()
+        df['FY'] = df.index.to_period('A-MAR')  # Group by fiscal year ending in March
+        fy_returns = df['Close'].resample('A-MAR').last().pct_change().dropna() * 100
+        return fy_returns
+
+
+    def plot_with_labels(ax, fy_returns, title, color):
+        bars = ax.bar(fy_returns.index.year - 2, fy_returns, color=color, alpha=0.7)
+        ax.set_title(title)
+        ax.set_ylabel('Return (%)')
+        ax.set_xlabel('Fiscal Year')
+        ax.set_xticks(fy_returns.index.year - 1)
+
+        # Add return labels on top of each bar
+        for bar in bars:
+            height = bar.get_height()
+            ax.annotate(f'{height:.2f}%', 
+                        xy=(bar.get_x() + bar.get_width() / 2, height),
+                        xytext=(0, 3),  # 3 points vertical offset
+                        textcoords="offset points",
+                        ha='center', va='bottom')
+
+    # Calculate fiscal year returns for the dataframe
+    fy_returns = calculate_fy_returns(df)
+
+    ten_year_return = (df[df.index >= '2014-04-01']['Close'][-1]-df[df.index >= '2014-04-01']['Close'][0])/df[df.index >= '2014-04-01']['Close'][0]
+    overall_return = (df['Close'][-1]-df['Close'][0])/df['Close'][0]
+    print(f'Ten year return: {round(ten_year_return,2)}%')
+    print(f'Overall return: {round(overall_return,2)}%')
+
+    # Create a bar chart
+    fig, ax = plt.subplots(figsize=(10, 5))
+    plot_with_labels(ax, fy_returns, title, color='Red')
+
+    plt.tight_layout()
     plt.show()
