@@ -13,6 +13,7 @@ import optuna
 from scipy.signal import savgol_filter
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from Baseline_functions import calculate_macd_signals
 
 def create_states(df, window_size=9):
     states = []
