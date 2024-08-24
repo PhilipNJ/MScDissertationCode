@@ -417,7 +417,6 @@ def generate_trade_summary(df,Action,Price):
     trade_summary_df= trade_summary_df.sort_values(by='Profit/Loss', ascending=False)
     return trade_summary_df
 
-
 def plot_test_trades(df):
     # Create the subplot figure with secondary y-axis
     fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -483,9 +482,9 @@ def test_trades_summary(df_test, evaluation_log):
     print()
     print("--- Test Trades Summary ---")
     print(f"Return without DQN: {round((test_trades_combined['Close'].iloc[-1] - test_trades_combined['Close'].iloc[0])/test_trades_combined['Close'].iloc[0], 3)}%")
-    print(f"Return with DQN: {round((test_trades_combined['Capital_DQN'].iloc[-1] - 100), 3)}%")
-    print(f"Return with MACD: {round((test_trades_combined['Capital_MACD'].iloc[-1] - 100), 3)}%")
-    print(f"Return with Combined Capital: {round(test_trades_combined['Capital_MACD'].iloc[-1] - 100 + test_trades_combined['Capital_DQN'].iloc[-1] - 100, 3)}%")
+    print(f"Return with DQN: {round((test_trades_combined['Capital_DQN'].iloc[-1] - 100)/100, 3)}%")
+    print(f"Return with MACD: {round((test_trades_combined['Capital_MACD'].iloc[-1] - 100)/100, 3)}%")
+    print(f"Return with Combined Capital: {round((test_trades_combined['Capital_MACD'].iloc[-1] - 100 + test_trades_combined['Capital_DQN'].iloc[-1] - 100)/100, 3)}%")
     plot_test_trades(test_trades_combined)
     return test_trades_combined
 
