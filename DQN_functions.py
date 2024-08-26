@@ -256,7 +256,7 @@ def create_action_episode_df(log_train):
     
     return action_episode_df
 
-def plot_training(log_train):
+def plot_training(log_train,title = 'Reward and Loss vs Episode'):
     fig, ax1 = plt.subplots(figsize=(10, 6))  # Adjust the figsize to make the graph wider
 
     # Plotting the Reward series
@@ -273,7 +273,7 @@ def plot_training(log_train):
     ax2.set_ylabel('Loss', color='red')
     ax2.tick_params(axis='y', labelcolor='red')
 
-    plt.title('Reward and Loss vs Episode')
+    plt.title(title)
     plt.show()
 
 def plot_dual_axis(all_states_eval):
